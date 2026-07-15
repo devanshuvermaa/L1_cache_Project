@@ -113,6 +113,11 @@ module cache_top #(
 
     assign cpu_stall = !(state == IDLE || (state == COMPARE && cache_hit));
 
+    assign array_wen = (state == ALLOCATE && mem_ready);
+    assign array_wdata = mem_rdata;
+    assign array_set_dirty = (state == COMPARE && cache_hit && cpu_wen);
+    assign array_clear_dirty = 1'b0;
+    
     assign mem_ren   = (state == ALLOCATE);
     assign mem_wen   = (state == WRITE_BACK);
     assign mem_addr  = (state == WRITE_BACK) ? {array_rtag, index, 4'b0000}

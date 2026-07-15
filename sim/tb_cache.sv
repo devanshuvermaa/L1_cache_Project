@@ -41,20 +41,28 @@ module tb_cache;
 
     always #5 clk = ~clk;
 
-    always @(posedge clk) begin
-        if (mem_ren) begin
-            #20;
-            mem_rdata <= 128'hDEADBEEF_CAFEBABE_01234567_89ABCDEF;
-            mem_ready <= 1;
-            #10 mem_ready <= 0;
+    int mem_wait_ctr = 0;
+
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            mem_ready <= 0;
+            mem_wait_ctr <= 0;
         end
-        else if (mem_wen) begin
-            #20;
-            mem_ready <= 1;
-            #10 mem_ready <= 0;
+        else if ((mem_ren || mem_wen) && !mem_ready) begin
+            if (mem_wait_ctr < 4) begin
+                mem_wait_ctr <= mem_wait_ctr + 1;
+            end
+            else begin
+                mem_ready <= 1;
+                mem_wait_ctr <= 0;
+
+                if (mem_ren)
+                    mem_rdata <= 128'hDEADBEEF_CAFEBABE_01234567_89ABCDEF;
+            end
         end
         else begin
             mem_ready <= 0;
+            mem_wait_ctr <= 0;
         end
     end
 
@@ -69,25 +77,34 @@ module tb_cache;
         #15 rst_n = 1;
 
         #10;
+        @(posedge clk);
         cpu_addr = 32'h0000_1000;
         cpu_ren  = 1;
 
-        wait (!cpu_stall);
+        @(posedge clk);
+        while (cpu_stall)
+            @(posedge clk);
         cpu_ren = 0;
 
         #20;
+        @(posedge clk);
         cpu_addr  = 32'h0000_1000;
         cpu_wdata = 32'h9999_9999;
         cpu_wen   = 1;
 
-        wait (!cpu_stall);
+        @(posedge clk);
+        while (cpu_stall)
+            @(posedge clk);
         cpu_wen = 0;
 
         #20;
+        @(posedge clk);
         cpu_addr = 32'h0000_2000;
         cpu_ren  = 1;
 
-        wait (!cpu_stall);
+        @(posedge clk);
+        while (cpu_stall)
+            @(posedge clk);
         cpu_ren = 0;
 
         #50 $finish;
