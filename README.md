@@ -42,7 +42,6 @@ The waveform below demonstrates the Finite State Machine (FSM) successfully hand
 ---
 
 ## 💻 How to Run the Simulation Locally
-## 💻 How to Run the Simulation Locally
 
 ### Prerequisites
 To compile and simulate this project, you will need **Icarus Verilog**. To view the output, you will need a `.vcd` viewer like **GTKWave** or the **NovyWave** Chrome extension.
