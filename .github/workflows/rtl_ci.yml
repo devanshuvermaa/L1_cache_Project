@@ -14,15 +14,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Icarus Verilog
+      - name: Install Dependencies
         run: |
           sudo yum update -y
-          sudo yum install -y iverilog
+          sudo yum install -y python3 iverilog
 
       - name: Run Python Verification Script
         run: python3 scripts/run_and_parse.py
