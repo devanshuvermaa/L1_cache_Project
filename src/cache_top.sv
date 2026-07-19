@@ -22,42 +22,71 @@ module cache_top #(
 );
 
     logic [21:0] tag;
-    logic [5:0] index;
-    logic [3:0] offset;
+    logic [5:0]  index;
+    logic [3:0]  offset;
 
     assign tag    = cpu_addr[31:10];
     assign index  = cpu_addr[9:4];
     assign offset = cpu_addr[3:0];
 
-    logic [21:0] array_rtag;
-    logic        array_valid;
-    logic        array_dirty;
-    logic [127:0] array_rdata;
+    logic [21:0] rtag_way0, rtag_way1;
+    logic        valid_way0, valid_way1;
+    logic        dirty_way0, dirty_way1;
+    logic [127:0] rdata_way0, rdata_way1;
+    logic        lru_way;
 
-    logic array_wen;
-    logic array_set_dirty;
-    logic array_clear_dirty;
-    logic [127:0] array_wdata;
+    logic wen_way0, set_dirty_way0, clear_dirty_way0;
+    logic wen_way1, set_dirty_way1, clear_dirty_way1;
+    logic update_lru, accessed_way;
 
     tag_array my_tag_array (
         .clk(clk),
-        .wen(array_wen),
-        .set_dirty(array_set_dirty),
-        .clear_dirty(array_clear_dirty),
+        .wen_way0(wen_way0),
+        .set_dirty_way0(set_dirty_way0),
+        .clear_dirty_way0(clear_dirty_way0),
+        .wen_way1(wen_way1),
+        .set_dirty_way1(set_dirty_way1),
+        .clear_dirty_way1(clear_dirty_way1),
+        .update_lru(update_lru),
+        .accessed_way(accessed_way),
         .index(index),
         .wtag(tag),
-        .rtag(array_rtag),
-        .valid(array_valid),
-        .dirty(array_dirty)
+        .rtag_way0(rtag_way0),
+        .valid_way0(valid_way0),
+        .dirty_way0(dirty_way0),
+        .rtag_way1(rtag_way1),
+        .valid_way1(valid_way1),
+        .dirty_way1(dirty_way1),
+        .lru_way(lru_way)
     );
 
     data_array my_data_array (
         .clk(clk),
-        .wen(array_wen),
+        .wen_way0(wen_way0),
+        .wen_way1(wen_way1),
         .index(index),
-        .wdata(array_wdata),
-        .rdata(array_rdata)
+        .wdata(mem_rdata),
+        .rdata_way0(rdata_way0),
+        .rdata_way1(rdata_way1)
     );
+
+    logic hit_way0, hit_way1, cache_hit;
+
+    assign hit_way0  = valid_way0 && (rtag_way0 == tag);
+    assign hit_way1  = valid_way1 && (rtag_way1 == tag);
+    assign cache_hit = hit_way0 | hit_way1;
+
+    logic [127:0] hit_data;
+
+    assign hit_data = hit_way1 ? rdata_way1 : rdata_way0;
+
+    logic [21:0]  evict_tag;
+    logic [127:0] evict_data;
+    logic         evict_dirty;
+
+    assign evict_tag   = lru_way ? rtag_way1 : rtag_way0;
+    assign evict_data  = lru_way ? rdata_way1 : rdata_way0;
+    assign evict_dirty = lru_way ? dirty_way1 : dirty_way0;
 
     typedef enum logic [1:0] {
         IDLE       = 2'b00,
@@ -75,10 +104,6 @@ module cache_top #(
             state <= next_state;
     end
 
-    logic cache_hit;
-
-    assign cache_hit = (array_valid && (array_rtag == tag));
-
     always_comb begin
         next_state = state;
 
@@ -92,7 +117,7 @@ module cache_top #(
                 if (cache_hit)
                     next_state = IDLE;
                 else begin
-                    if (array_dirty)
+                    if (evict_dirty)
                         next_state = WRITE_BACK;
                     else
                         next_state = ALLOCATE;
@@ -113,17 +138,30 @@ module cache_top #(
 
     assign cpu_stall = !(state == IDLE || (state == COMPARE && cache_hit));
 
-    assign array_wen = (state == ALLOCATE && mem_ready);
-    assign array_wdata = mem_rdata;
-    assign array_set_dirty = (state == COMPARE && cache_hit && cpu_wen);
-    assign array_clear_dirty = 1'b0;
-    
+    assign cpu_rdata = hit_data[(offset * 8) +: 32];
+
     assign mem_ren   = (state == ALLOCATE);
     assign mem_wen   = (state == WRITE_BACK);
-    assign mem_addr  = (state == WRITE_BACK) ? {array_rtag, index, 4'b0000}
-                                             : {tag, index, 4'b0000};
-    assign mem_wdata = array_rdata;
 
-    assign cpu_rdata = array_rdata[(offset * 8) +: 32];
+    assign mem_addr  = (state == WRITE_BACK) ?
+                       {evict_tag, index, 4'b0000} :
+                       {tag, index, 4'b0000};
+
+    assign mem_wdata = evict_data;
+
+    assign wen_way0 = (state == ALLOCATE && mem_ready && !lru_way);
+    assign wen_way1 = (state == ALLOCATE && mem_ready &&  lru_way);
+
+    assign set_dirty_way0 = (state == COMPARE && hit_way0 && cpu_wen);
+    assign set_dirty_way1 = (state == COMPARE && hit_way1 && cpu_wen);
+
+    assign clear_dirty_way0 = 1'b0;
+    assign clear_dirty_way1 = 1'b0;
+
+    assign update_lru = (state == COMPARE && cache_hit) ||
+                        (state == ALLOCATE && mem_ready);
+
+    assign accessed_way = (state == COMPARE && cache_hit) ?
+                          hit_way1 : lru_way;
 
 endmodule

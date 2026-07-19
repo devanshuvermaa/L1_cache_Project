@@ -57,7 +57,7 @@ module tb_cache;
                 mem_wait_ctr <= 0;
 
                 if (mem_ren)
-                    mem_rdata <= 128'hDEADBEEF_CAFEBABE_01234567_89ABCDEF;
+                    mem_rdata <= {4{32'hDEADBEEF}};
             end
         end
         else begin
@@ -65,6 +65,14 @@ module tb_cache;
             mem_wait_ctr <= 0;
         end
     end
+
+    int total_accesses = 0;
+    int total_hits = 0;
+
+    logic [21:0] rand_tag;
+    logic [5:0]  rand_idx;
+    int rw_roll;
+    integer i;
 
     initial begin
         $dumpfile("cache_waves.vcd");
@@ -75,37 +83,54 @@ module tb_cache;
         cpu_wen = 0;
 
         #15 rst_n = 1;
-
         #10;
-        @(posedge clk);
-        cpu_addr = 32'h0000_1000;
-        cpu_ren  = 1;
 
-        @(posedge clk);
-        while (cpu_stall)
+        $display("Starting Procedural Random Cache Simulation...");
+
+        for (i = 0; i < 1000; i = i + 1) begin
+
+            rand_tag = $urandom_range(1, 4);
+            rand_idx = $urandom_range(0, 3);
+
             @(posedge clk);
-        cpu_ren = 0;
 
-        #20;
-        @(posedge clk);
-        cpu_addr  = 32'h0000_1000;
-        cpu_wdata = 32'h9999_9999;
-        cpu_wen   = 1;
+            cpu_addr  = {rand_tag, rand_idx, 4'h0};
+            cpu_wdata = $urandom();
 
-        @(posedge clk);
-        while (cpu_stall)
+            rw_roll = $urandom_range(1, 100);
+
+            if (rw_roll <= 70) begin
+                cpu_ren = 1;
+                cpu_wen = 0;
+            end
+            else begin
+                cpu_ren = 0;
+                cpu_wen = 1;
+            end
+
             @(posedge clk);
-        cpu_wen = 0;
 
-        #20;
-        @(posedge clk);
-        cpu_addr = 32'h0000_2000;
-        cpu_ren  = 1;
+            cpu_ren = 0;
+            cpu_wen = 0;
 
-        @(posedge clk);
-        while (cpu_stall)
-            @(posedge clk);
-        cpu_ren = 0;
+            total_accesses = total_accesses + 1;
+
+            if (!cpu_stall) begin
+                total_hits = total_hits + 1;
+            end
+            else begin
+                while (cpu_stall)
+                    @(posedge clk);
+            end
+        end
+
+        $display("========================================");
+        $display("   CACHE SIMULATION COMPLETE");
+        $display("   Total Accesses: %0d", total_accesses);
+        $display("   Total Hits:     %0d", total_hits);
+        $display("   Hit Rate:       %0.2f%%",
+                 (real'(total_hits) / total_accesses) * 100);
+        $display("========================================");
 
         #50 $finish;
     end
