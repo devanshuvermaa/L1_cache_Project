@@ -14,10 +14,21 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Install Dependencies
+      - name: Install Build Dependencies & Python
         run: |
           sudo yum update -y
-          sudo yum install -y python3 iverilog
+          sudo yum install -y gcc gcc-c++ make bison flex git autoconf gperf python3
+
+      - name: Build & Install Icarus Verilog from Source
+        run: |
+          # Clean up any old builds, then clone and compile
+          rm -rf /tmp/iverilog
+          git clone https://github.com/steveicarus/iverilog.git /tmp/iverilog
+          cd /tmp/iverilog
+          sh autoconf.sh
+          ./configure
+          make
+          sudo make install
 
       - name: Run Python Verification Script
         run: python3 scripts/run_and_parse.py
